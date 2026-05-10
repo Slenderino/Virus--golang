@@ -42,6 +42,7 @@ const(
 type OperationResult int
 const(
 	Success OperationResult = iota
+	OrganToDestroy
 	Error
 	Illegal
 	NotImplemented
@@ -62,8 +63,12 @@ type Medicine struct {
 }
 func (m Medicine) GetColor() Color { return m.Color }
 func (m Medicine) GetCardType() CardType { return MedicineCardType }
-func (m Medicine) ApplyToJoint(g Game, j *Joint) OperationResult {
-	if !(ColorsMatch(j.Base.Color, m.Color) || ColorsMatch(j.Added[0].GetColor(), m.Color)) {return Illegal}
+func (m Medicine) ApplyToJoint(g *Game, j *Joint) OperationResult {
+	if !ColorsMatch(j.Base.Color, m.Color) {
+        if len(j.Added) == 0 || !ColorsMatch(j.Added[0].GetColor(), m.Color) {
+            return Illegal
+        }
+    }
 	if j.State == ImmunisedJointState {return Illegal}
 	if len(j.Added) == 0 {
 		j.Added = append(j.Added, m)
@@ -95,8 +100,12 @@ type Virus struct {
 }
 func (v Virus) GetColor() Color { return v.Color }
 func (v Virus) GetCardType() CardType { return VirusCardType }
-func (v Virus) ApplyToJoint(g Game, j *Joint) OperationResult {
-	if !(ColorsMatch(j.Base.Color, v.Color) || ColorsMatch(j.Added[0].GetColor(), v.Color)) {return Illegal}
+func (v Virus) ApplyToJoint(g *Game, j *Joint) OperationResult {
+	if !ColorsMatch(j.Base.Color, v.Color) {
+        if len(j.Added) == 0 || !ColorsMatch(j.Added[0].GetColor(), v.Color) {
+            return Illegal
+        }
+    }
 	if j.State == ImmunisedJointState {return Illegal}
 	if len(j.Added) == 0 {
 		j.Added = append(j.Added, v)
@@ -108,8 +117,7 @@ func (v Virus) ApplyToJoint(g Game, j *Joint) OperationResult {
 		g.Discard(j.Base)
 		g.Discard(j.Added[0])
 		g.Discard(v)
-		//TODO: remove Joint from player's body
-		return NotImplemented
+		return OrganToDestroy
 	case MedicineCardType:
 		g.Discard(j.Added[0])
 		g.Discard(v)
@@ -122,7 +130,7 @@ func (v Virus) ApplyToJoint(g Game, j *Joint) OperationResult {
 type ApplicableToOrgan interface {
 	Card
 	GetColor() Color
-	ApplyToJoint(g Game, j *Joint) OperationResult
+	ApplyToJoint(g *Game, j *Joint) OperationResult
 }
 
 type Joint struct {
