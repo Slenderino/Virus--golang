@@ -139,6 +139,12 @@ type Joint struct {
 	State JointState
 }
 
+type Treatment struct {
+	TreatmentType TreatmentType
+}
+func (t Treatment) GetTreatmentType() TreatmentType { return t.TreatmentType }
+func (t Treatment) GetCardType() CardType { return TreatmentCardType }
+
 type Player struct {
 	Hand []Card
 	Body []Joint
