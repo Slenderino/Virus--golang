@@ -92,7 +92,6 @@ type ApplicableToOrgan interface {
 type Joint struct {
 	Base Organ
 	Added []ApplicableToOrgan
-	Owner Player //added to be able to acces player from joint
 }
 func (j Joint) DeriveJointState() JointState {
 	if len(j.Added) == 0 { return FreeJointState}
