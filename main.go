@@ -100,7 +100,7 @@ func (j Joint) DeriveJointState() JointState {
 		return InfectedJointState
 	}
 	// len(j.Added) == 2 
-	return VaccinatedJointState 
+	return ImmunisedJointState 
 }
 
 type Treatment struct {
