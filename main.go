@@ -99,8 +99,8 @@ func (j Joint) DeriveJointState() JointState {
 		if j.Added[0].GetCardType() == MedicineCardType { return VaccinatedJointState }
 		return InfectedJointState
 	}
-	// len(j.Added) == 2 
-	return ImmunisedJointState 
+	// len(j.Added) == 2
+	return ImmunisedJointState
 }
 
 type Treatment struct {
@@ -133,14 +133,14 @@ func (g *Game) ApplyAddonToJoint(addon ApplicableToOrgan, joint *Joint) Operatio
 		fmt.Printf("ERR: Addon color %v has been tried to apply to joint color %v", addon.GetColor(), joint.Base.Color)
 		return Illegal
 	}
-	
+
 	if joint.DeriveJointState() == ImmunisedJointState {
 		fmt.Println("ERR: Tried to apply addon to immunised joint")
 		return Illegal
 	}
 
 	if pureOrgan {
-		joint.Added = []ApplicableToOrgan{addon}	
+		joint.Added = []ApplicableToOrgan{addon}
 	} else {
 		if addon.GetCardType() == MedicineCardType {
 			if joint.DeriveJointState() == InfectedJointState {
@@ -165,3 +165,16 @@ func (g *Game) ApplyAddonToJoint(addon ApplicableToOrgan, joint *Joint) Operatio
 func main() {
 
 }
+
+/* TODO:
+[ ] InitDeck / Shuffle / DrawCard / DealInitialHands
+[ ] HasWon
+[ ] Action struct
+[ ] Regla de exclusividad de color en Body
+[ ] PlayOrgan
+[ ] PlayAddon  ←  aquí vive la destrucción de órgano
+[ ] DiscardAndDraw
+[ ] DrawPhase / PlayPhase / game loop
+[ ] PrintGameState / PrintHand / input parser
+[ ] 5 tratamientos
+*/
