@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"rand"
+	"math/rand"
 )
 
 // --- Auxiliar Types
@@ -56,7 +56,7 @@ const(
 type Result struct {
 	Type OperationResult
 	Message string
-	
+
 }
 
 // Every card must have these methods
@@ -160,46 +160,63 @@ func (g *Game) ApplyAddonToJoint(addon ApplicableToOrgan, joint *Joint) Result {
 				joint.Added = []ApplicableToOrgan{}
 			} else { //InfectedJointState
 				// remove joint
-				return Result{OrganToDestroy, "Destroy organ" + string(&joint)}
+				return Result{OrganToDestroy, fmt.Sprintf("Destroy organ %v", joint)}
 			}
 		}
 	}
 	return Result{Success, "Success"}
 }
-const StartingDeck [68]Card = [68]Card{
-		Organ{Color: Multi}, 5*Organ{Color: Red}, 5*Organ{Color: Green}, 5*Organ{Color: Blue}, 5*Organ{Color: Yellow},
-		Virus{Color: Multi}, 4*Virus{Color: Red}, 4*Virus{Color: Green}, 4*Virus{Color: Blue}, 4*Virus{Color: Yellow},
-		4*Medicine{Color: Multi}, 4*Medicine{Color: Red}, 4*Medicine{Color: Green}, 4*Medicine{Color: Blue}, 4*Medicine{Color: Yellow},
-		2*Treatment{TreatmentType: Contagion}, 3*Treatment{TreatmentType: OrganThief}, 3*Treatment{TreatmentType: Transplant}, Treatment{TreatmentType: LatexGlove}, Treatment{TreatmentType: MedicalError}
-	}
+func BuildStartingDeck() []Card {
+    deck := []Card{}
+    
+    // Unique cards
+    deck = append(deck, Organ{Multi}, Virus{Multi}, Treatment{LatexGlove}, Treatment{MedicalError})
+    // Two Cards
+    for i := 0; i < 2; i++ {
+        deck = append(deck, Treatment{Contagion})
+    }
+    // Three Cards 
+    for i := 0; i < 3; i++ {
+        deck = append(deck, Treatment{OrganThief}, Treatment{Transplant})
+    }
+    
+    for range 4 {
+        deck = append(deck, Virus{Red}, Virus{Green}, Virus{Blue}, Virus{Yellow},
+        Medicine{Multi}, Medicine{Red}, Medicine{Green}, Medicine{Blue}, Medicine{Yellow})
+    }
+    
+    for range 5 {
+        deck = append(deck, Organ{Color: Red}, Organ{Color: Green},
+                            Organ{Color: Blue}, Organ{Color: Yellow})
+    }
+    return deck
+}
 func(g *Game) InitDeck() {
-	g.GrabPile = StartingDeck
-	g.GrabPile.Shuffle()
+	g.GrabPile = BuildStartingDeck()
+	Shuffle(&g.GrabPile)
 }
-func(cards *[]Card)Shuffle() {
-	shuffled := make([]Card, len(cards))
-	copy(shuffled, cards)
-	for i := len(shuffled) - 1; i > 0; i-- {
-		j := rand.Intn(i + 1)
-		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
-	}
-	cards = &shuffled
+func Shuffle(cards *[]Card) {
+    s := *cards
+    for i := len(s) - 1; i > 0; i-- {
+        j := rand.Intn(i + 1)
+        s[i], s[j] = s[j], s[i]
+    }
 }
-func(g *Game) DrawCard(player *Player) Result {
-	if len(g.GrabPile) == 0 {
-		// Need to flip discardpile into grabpile
-		g.GrabPile = g.DiscardPile[::-1]
-		g.DiscardPile = []Card{}
-	}
-	if len(player.Hand) >= 3 {
-		return Result{Illegal, "ERR: Tried to draw card but player already has 3 or more cards"}
-	}
-	card := g.GrabPile[len(g.GrabPile)-1]
-	g.GrabPile = g.GrabPile[:len(g.GrabPile)-1]
-	player.Hand = append(player.Hand, card)
-	if g.DrawCard(player) == Illegal { //Probably a bad idea, but recursively tries to draw until it can't anymore, as there should be any state in which a player shuldn't draw until 3 cards
-		return Result{Success, "Success"}
-	}
+func (g *Game) DrawCard(player *Player) Result {
+    if len(g.GrabPile) == 0 {
+        if len(g.DiscardPile) == 0 {
+            return Result{Error, "ERR: Both piles are empty"}
+        }
+        for i := len(g.DiscardPile) - 1; i >= 0; i-- {
+            g.GrabPile = append(g.GrabPile, g.DiscardPile[i])
+        }
+        g.DiscardPile = []Card{}
+        // GrabPile is not shuffled, the rules indicate a direct flip, without shuffling when the players run out of the GrabPile
+    }
+    card := g.GrabPile[len(g.GrabPile)-1]
+    g.GrabPile = g.GrabPile[:len(g.GrabPile)-1]
+    player.Hand = append(player.Hand, card)
+    return Result{Success, "Success"}
 }
 func(g *Game) DealInitialHands(numberOfPlayers int) Result {
 	// Assuming all players empty hands
@@ -207,14 +224,16 @@ func(g *Game) DealInitialHands(numberOfPlayers int) Result {
 		return Result{Illegal, "ERR: Invalid number of players"}
 	}
 	g.Players = make([]Player, numberOfPlayers)
-	for i := 0; i < numberOfPlayers; i++ {
-		res := g.DrawCard(i)
-		if res.Type != Success {
+	for i := range numberOfPlayers {
+		for range 3 {
+			res := g.DrawCard(&g.Players[i])
+			if res.Type != Success {
 			return Result{Error, fmt.Sprintf("Result of type %v with message %v when dealing player %v", res.Type, res.Message, i)}
+		}
 		}
 	}
 	return Result{Success, "Success"}
-} 
+}
 
 func main() {
 
