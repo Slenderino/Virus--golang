@@ -172,11 +172,11 @@ func BuildStartingDeck() []Card {
     // Unique cards
     deck = append(deck, Organ{Multi}, Virus{Multi}, Treatment{LatexGlove}, Treatment{MedicalError})
     // Two Cards
-    for i := 0; i < 2; i++ {
+    for range 2 {
         deck = append(deck, Treatment{Contagion})
     }
     // Three Cards 
-    for i := 0; i < 3; i++ {
+    for range 3 {
         deck = append(deck, Treatment{OrganThief}, Treatment{Transplant})
     }
     
@@ -202,6 +202,13 @@ func Shuffle(cards *[]Card) {
         s[i], s[j] = s[j], s[i]
     }
 }
+/*
+ * DrawCard gives a card from the grabPile to a player, also manages the flipping when ran out of
+ * grab pile, it makes sure that the player is able to draw a card.
+ * 
+ * We first check the grab pile, if it's empty we flip the discard pile and put it
+ * 
+ */
 func (g *Game) DrawCard(player *Player) Result {
     if len(g.GrabPile) == 0 {
         if len(g.DiscardPile) == 0 {
@@ -218,6 +225,15 @@ func (g *Game) DrawCard(player *Player) Result {
     player.Hand = append(player.Hand, card)
     return Result{Success, "Success"}
 }
+/*
+ * DealInitialHands deals the initial hands to all players, drawing 3 cards each.
+ * It can do this at a *Game level, not needing to access the individual player's hand, DrawCard 
+ * manages that responsability.
+ * 
+ * It checks the number of players to ensure it's within the valid range (2-6).
+ * Then instantiates them inside g.Players, drawing three cards for each, and propagating any error
+ * occurred during the dealing.
+ */
 func(g *Game) DealInitialHands(numberOfPlayers int) Result {
 	// Assuming all players empty hands
 	if numberOfPlayers < 2 || numberOfPlayers > 6 {
@@ -235,13 +251,33 @@ func(g *Game) DealInitialHands(numberOfPlayers int) Result {
 	return Result{Success, "Success"}
 }
 
+/*
+ * HasWon checks if a player has won based on his number of joints and their states.
+ * Assuming no colors are repeated, having 4 or more healthy joints would indicate a victory.
+ * 
+ * We check the lenght of the body, and then, for each joint, we go to the next one if it's healthy
+ * If we reach the last one and it's healthy, before proceeding we escape with a return true.
+ * Were we ever find an unhealthy joint before the last one, we escape the loop and exit with false.
+ */
+func HasWon(player Player) bool {
+	if len(player.Body) >= 4 {
+		i := 0
+		for ((player.Body[i]).DeriveJointState() != InfectedJointState) {
+			if i > len(player.Body)-1 {
+				return true
+			}
+			i++ // kinda weird not capping increment, but it will either reach the last one before adding, so all the joints are healthy and therfore the player has won, or it will find an infected joint before finishing, never letting it increment past the player body's lenght
+		}
+	}
+	return false
+}
+
 func main() {
 
 }
 
 /* TODO:
-[*] InitDeck / Shuffle / DrawCard / DealInitialHands
-[ ] HasWon
+[*] HasWon
 [ ] Action struct
 [ ] Regla de exclusividad de color en Body
 [ ] PlayOrgan
