@@ -85,6 +85,15 @@ type Organ struct {
 func (o Organ) GetColor() Color { return o.Color }
 func (o Organ) GetCardType() CardType { return OrganCardType }
 
+func PlayerHasOrganColor(p Player, color Color) bool {
+	for _, o := range p.Body {
+		if o.Base.Color == color {
+			return true
+		}
+	}
+	return false
+}
+
 type Virus struct {
 	Color Color
 }
@@ -289,8 +298,7 @@ func main() {
 }
 
 /* TODO:
-[*] Action struct
-[ ] Regla de exclusividad de color en Body
+[*] Regla de exclusividad de color en Body
 [ ] PlayOrgan
 [ ] PlayAddon  ←  aquí vive la destrucción de órgano
 [ ] DiscardAndDraw
