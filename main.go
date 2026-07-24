@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"slices"
 )
 
 // --- Auxiliar Types
@@ -166,25 +167,26 @@ func (g *Game) ApplyAddonToJoint(addon ApplicableToOrgan, joint *Joint) Result {
 	}
 	return Result{Success, "Success"}
 }
+
 func BuildStartingDeck() []Card {
     deck := []Card{}
-    
+
     // Unique cards
     deck = append(deck, Organ{Multi}, Virus{Multi}, Treatment{LatexGlove}, Treatment{MedicalError})
     // Two Cards
     for range 2 {
         deck = append(deck, Treatment{Contagion})
     }
-    // Three Cards 
+    // Three Cards
     for range 3 {
         deck = append(deck, Treatment{OrganThief}, Treatment{Transplant})
     }
-    
+
     for range 4 {
         deck = append(deck, Virus{Red}, Virus{Green}, Virus{Blue}, Virus{Yellow},
         Medicine{Multi}, Medicine{Red}, Medicine{Green}, Medicine{Blue}, Medicine{Yellow})
     }
-    
+
     for range 5 {
         deck = append(deck, Organ{Color: Red}, Organ{Color: Green},
                             Organ{Color: Blue}, Organ{Color: Yellow})
@@ -202,20 +204,21 @@ func Shuffle(cards *[]Card) {
         s[i], s[j] = s[j], s[i]
     }
 }
+
 /*
  * DrawCard gives a card from the grabPile to a player, also manages the flipping when ran out of
  * grab pile, it makes sure that the player is able to draw a card.
- * 
- * We first check the grab pile, if it's empty we flip the discard pile and put it
- * 
+ *
+ * We first check the grab pile, if it's empty we flip the discard pile and put it again.
+ *
  */
 func (g *Game) DrawCard(player *Player) Result {
     if len(g.GrabPile) == 0 {
         if len(g.DiscardPile) == 0 {
             return Result{Error, "ERR: Both piles are empty"}
         }
-        for i := len(g.DiscardPile) - 1; i >= 0; i-- {
-            g.GrabPile = append(g.GrabPile, g.DiscardPile[i])
+        for _, v := range slices.Backward(g.DiscardPile) {
+            g.GrabPile = append(g.GrabPile, v)
         }
         g.DiscardPile = []Card{}
         // GrabPile is not shuffled, the rules indicate a direct flip, without shuffling when the players run out of the GrabPile
@@ -225,11 +228,12 @@ func (g *Game) DrawCard(player *Player) Result {
     player.Hand = append(player.Hand, card)
     return Result{Success, "Success"}
 }
+
 /*
  * DealInitialHands deals the initial hands to all players, drawing 3 cards each.
- * It can do this at a *Game level, not needing to access the individual player's hand, DrawCard 
+ * It can do this at a *Game level, not needing to access the individual player's hand, DrawCard
  * manages that responsability.
- * 
+ *
  * It checks the number of players to ensure it's within the valid range (2-6).
  * Then instantiates them inside g.Players, drawing three cards for each, and propagating any error
  * occurred during the dealing.
@@ -254,7 +258,7 @@ func(g *Game) DealInitialHands(numberOfPlayers int) Result {
 /*
  * HasWon checks if a player has won based on his number of joints and their states.
  * Assuming no colors are repeated, having 4 or more healthy joints would indicate a victory.
- * 
+ *
  * We check the lenght of the body, and then, for each joint, we go to the next one if it's healthy
  * If we reach the last one and it's healthy, before proceeding we escape with a return true.
  * Were we ever find an unhealthy joint before the last one, we escape the loop and exit with false.
@@ -272,13 +276,20 @@ func HasWon(player Player) bool {
 	return false
 }
 
+type Action struct {
+	EmisorIdx        int
+	TargetPlayerIdx  []int
+	EmisorJointIdx   []int
+	TargetJointIdx   []int
+	ActuatingCardIdx int
+}
+
 func main() {
 
 }
 
 /* TODO:
-[*] HasWon
-[ ] Action struct
+[*] Action struct
 [ ] Regla de exclusividad de color en Body
 [ ] PlayOrgan
 [ ] PlayAddon  ←  aquí vive la destrucción de órgano
