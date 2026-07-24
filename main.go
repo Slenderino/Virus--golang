@@ -293,13 +293,47 @@ type Action struct {
 	ActuatingCardIdx int
 }
 
+func PlayOrgan(g *Game, action Action) Result {
+	emisor := g.Players[action.EmisorIdx]
+	card := emisor.Hand[action.ActuatingCardIdx]
+
+	organ, ok := card.(Organ)
+	if !ok {
+    	return Result{Type: Error, Message: "Card is not an organ."}
+	}
+
+	if len(action.TargetPlayerIdx) != 1 {
+		return Result{Error, "Invalid number of target players."}
+	}
+
+	target := g.Players[action.TargetPlayerIdx[0]]
+
+	if PlayerHasOrganColor(target, organ.Color) {
+		return Result{Type: Error, Message: fmt.Sprintf("Player has already organ of color %v.", organ.Color)}
+	}
+
+	target.Body = append(target.Body, Joint{Base: organ})
+	deleteFromSlice(&emisor.Hand, card)
+	return Result{Success, ""}
+
+
+ }
+
+ func deleteFromSlice[T comparable](s *[]T, o T) {
+	index := slices.Index(*s, o)
+	for i := index; i < len(*s)-1; i++ {
+		(*s)[i] = (*s)[i+1]
+	}
+	*s = (*s)[:len(*s)-1]
+ }
+
+
 func main() {
 
 }
 
 /* TODO:
-[*] Regla de exclusividad de color en Body
-[ ] PlayOrgan
+[*] PlayOrgan
 [ ] PlayAddon  ←  aquí vive la destrucción de órgano
 [ ] DiscardAndDraw
 [ ] DrawPhase / PlayPhase / game loop
