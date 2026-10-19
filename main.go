@@ -138,11 +138,14 @@ type Game struct {
 	Players []Player
 	GrabPile []Card
 	DiscardPile []Card
+	CurrentTurn int
 }
 
 func (g *Game) Discard(c Card) {
 	g.DiscardPile = append(g.DiscardPile, c)
 }
+
+// Función atomizada, solo se muta el estado si la acción va a ser exitosa, si falla el estado queda intacto
 func (g *Game) ApplyAddonToJoint(addon ApplicableToOrgan, joint *Joint) Result {
 	baseMatches := ColorsMatch(addon.GetColor(), joint.Base.Color)
 	pureOrgan := joint.DeriveJointState() == FreeJointState
@@ -156,25 +159,35 @@ func (g *Game) ApplyAddonToJoint(addon ApplicableToOrgan, joint *Joint) Result {
 		return Result{Illegal, "ERR: Tried to apply addon to immunised joint"}
 	}
 
+	// baseMatches OR addedMatches
+
 	if pureOrgan {
-		joint.Added = []ApplicableToOrgan{addon}
+		joint.Added = []ApplicableToOrgan{addon} // Organ is forced to match color with addon by logic, so there's no extra check
 	} else {
 		if addon.GetCardType() == MedicineCardType {
 			if joint.DeriveJointState() == InfectedJointState {
 				joint.Added = []ApplicableToOrgan{}
 			} else { //VaccinatedJointState
-				joint.Added = append(joint.Added, addon)
+				if baseMatches {
+					joint.Added = append(joint.Added, addon)
+				} else {
+					return Result{Illegal, "ERR: Tried to vaccinate incompatible organ"}
+				}
 			}
-		} else {
+		} else { // VirusCardType
 			if joint.DeriveJointState() == VaccinatedJointState {
 				joint.Added = []ApplicableToOrgan{}
 			} else { //InfectedJointState
-				// remove joint
-				return Result{OrganToDestroy, fmt.Sprintf("Destroy organ %v", joint)}
+				if baseMatches {
+					// remove joint
+					return Result{OrganToDestroy, fmt.Sprintf("Destroy organ %v", joint)}
+				} else {
+					return Result{Illegal, "ERR: Cannot infect incompatible organ"}
+				}
 			}
 		}
 	}
-	return Result{Success, "Success"}
+	return Result{Success, "Successfully placed addon onto joint"}
 }
 
 func BuildStartingDeck() []Card {
@@ -216,7 +229,7 @@ func Shuffle(cards *[]Card) {
 
 /*
  * DrawCard gives a card from the grabPile to a player, also manages the flipping when ran out of
- * grab pile, it makes sure that the player is able to draw a card.
+ * grab pile.
  *
  * We first check the grab pile, if it's empty we flip the discard pile and put it again.
  *
@@ -257,7 +270,7 @@ func(g *Game) DealInitialHands(numberOfPlayers int) Result {
 		for range 3 {
 			res := g.DrawCard(&g.Players[i])
 			if res.Type != Success {
-			return Result{Error, fmt.Sprintf("Result of type %v with message %v when dealing player %v", res.Type, res.Message, i)}
+				return Result{Error, fmt.Sprintf("Result of type %v with message %v when dealing player %v", res.Type, res.Message, i)}
 		}
 		}
 	}
@@ -285,17 +298,24 @@ func HasWon(player Player) bool {
 	return false
 }
 
+
 type Action struct {
 	EmisorIdx        int
 	TargetPlayerIdx  []int
 	EmisorJointIdx   []int
 	TargetJointIdx   []int
-	ActuatingCardIdx int
+	ActuatingCardIdx []int
+	ActionFunc func(*Game, Action) Result
 }
 
 func PlayOrgan(g *Game, action Action) Result {
 	emisor := g.Players[action.EmisorIdx]
-	card := emisor.Hand[action.ActuatingCardIdx]
+
+	if len(action.ActuatingCardIdx) != 1 {
+		return Result{Error, "Can only play 1 organ."}
+	}
+
+	card := emisor.Hand[action.ActuatingCardIdx[0]]
 
 	organ, ok := card.(Organ)
 	if !ok {
@@ -313,30 +333,133 @@ func PlayOrgan(g *Game, action Action) Result {
 	}
 
 	target.Body = append(target.Body, Joint{Base: organ})
-	deleteFromSlice(&emisor.Hand, card)
-	return Result{Success, ""}
+	deleteIndexFromSlice(&emisor.Hand, action.ActuatingCardIdx[0])
+	return Result{Success, "Succesfully placed organ"}
 
 
  }
 
- func deleteFromSlice[T comparable](s *[]T, o T) {
-	index := slices.Index(*s, o)
+ func deleteIndexFromSlice[T any](s *[]T, o int) {
+	index := o
 	for i := index; i < len(*s)-1; i++ {
 		(*s)[i] = (*s)[i+1]
 	}
 	*s = (*s)[:len(*s)-1]
  }
 
+func playAddon(g *Game, action Action) Result {
+	emisor := g.Players[action.EmisorIdx]
 
-func main() {
+	if len(action.ActuatingCardIdx) != 1 {
+		return Result{Error, "Can only play 1 addon at a time."}
+	}
+
+	addonToPlay := emisor.Hand[action.ActuatingCardIdx[0]]
+
+	addon, ok := addonToPlay.(ApplicableToOrgan)
+	if !ok {
+		return Result{Error, "Sent card is not applicable to organs."}
+	}
+
+	if len(action.TargetPlayerIdx) != 1 {
+		return Result{Error, "Cannot have more or less than 1 target player."}
+	}
+
+	target := g.Players[action.TargetPlayerIdx[0]]
+
+	if len(action.TargetJointIdx) != 1 {
+		return Result{Error, "Cannot have more or less than 1 target joint."}
+	}
+
+	targetJoint := target.Body[action.TargetJointIdx[0]]
+
+	result :=  g.ApplyAddonToJoint(addon, &targetJoint)
+
+	if result.Type == Success || result.Type == OrganToDestroy {
+		deleteIndexFromSlice(&emisor.Hand, action.ActuatingCardIdx[0])
+		if result.Type == OrganToDestroy {
+			g.DiscardPile = append(g.DiscardPile, targetJoint.Base, targetJoint.Added[0], addonToPlay)
+			deleteIndexFromSlice(&target.Body, action.TargetJointIdx[0])
+		}
+	}
+
+	return result
+}
+
+func discardAndDraw(g *Game, action Action) Result {
+	emisor := g.Players[action.EmisorIdx]
+	cardIdxsToDiscard := action.ActuatingCardIdx
+
+	if len(cardIdxsToDiscard) > 3 || len(cardIdxsToDiscard) < 1 {
+		return Result{Error, "Cards to discard must be between 1 and 3"}
+	}
+
+	for i := range cardIdxsToDiscard {
+		toDiscard := emisor.Hand[i]
+		g.Discard(toDiscard)
+		deleteIndexFromSlice(&emisor.Hand, i)
+	}
+
+	results := []Result{}
+
+	for range len(cardIdxsToDiscard) {
+		results = append(results, g.DrawCard(&emisor))
+	}
+
+	for _, result := range results {
+		if result.Type != Success {
+			return result
+		}
+	}
+
+	return Result{Success, fmt.Sprintf("Succesfully discarded and re-drawed %v cards", len(cardIdxsToDiscard))}
 
 }
 
+func(g *Game) DrawPhase(playerNum int) {
+	g.CurrentTurn = rand.Intn(playerNum)
+	g.DealInitialHands(playerNum)
+}
+
+func(g *Game) PlayPhase() (winnerIndex int) {
+	for {
+		for i, player := range g.Players {
+			if HasWon(player) {
+				winnerIndex = i
+				return
+			}
+		}
+		action := GetActionFromInput(g.CurrentTurn)
+		result := action.ActionFunc(g, action) //execute action
+		if result.Type != Success {
+			panic(result.Message) //propagate error
+		}
+		for range 3 - len(g.Players[g.CurrentTurn].Hand) {
+			g.DrawCard(&g.Players[g.CurrentTurn]) //draw until 3 cards
+		}
+		g.CurrentTurn = (g.CurrentTurn + 1) % len(g.Players) //pass the turn
+	}
+}
+
+func GetActionFromInput(playerIdx int) Action { panic("not implemented") }
+
+func GetPlayerNum() int { panic("not implemented") }
+
+func main() {
+	playerNum := GetPlayerNum()
+
+	game := Game{}
+	game.InitDeck()
+	game.DiscardPile = []Card{}
+	game.DrawPhase(playerNum)
+
+	winnerIndex := game.PlayPhase()
+
+	fmt.Printf("Player number %v has won!!! \n", winnerIndex)
+}
+
 /* TODO:
-[*] PlayOrgan
-[ ] PlayAddon  ←  aquí vive la destrucción de órgano
-[ ] DiscardAndDraw
-[ ] DrawPhase / PlayPhase / game loop
+[*] DrawPhase / PlayPhase / game loop
 [ ] PrintGameState / PrintHand / input parser
 [ ] 5 tratamientos
 */
