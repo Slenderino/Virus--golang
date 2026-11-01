@@ -309,7 +309,7 @@ type Action struct {
 }
 
 func PlayOrgan(g *Game, action Action) Result {
-	emisor := g.Players[action.EmisorIdx]
+	emisor := &g.Players[action.EmisorIdx]
 
 	if len(action.ActuatingCardIdx) != 1 {
 		return Result{Error, "Can only play 1 organ."}
@@ -326,9 +326,9 @@ func PlayOrgan(g *Game, action Action) Result {
 		return Result{Error, "Invalid number of target players."}
 	}
 
-	target := g.Players[action.TargetPlayerIdx[0]]
+	target := &g.Players[action.TargetPlayerIdx[0]]
 
-	if PlayerHasOrganColor(target, organ.Color) {
+	if PlayerHasOrganColor(*target, organ.Color) {
 		return Result{Type: Error, Message: fmt.Sprintf("Player has already organ of color %v.", organ.Color)}
 	}
 
