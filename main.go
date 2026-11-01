@@ -6,7 +6,7 @@ import (
 	"slices"
 )
 
-// --- Auxiliar Types
+// --- Tipos auxiliares
 type CardType int
 const(
 	OrganCardType CardType = iota
@@ -60,7 +60,7 @@ type Result struct {
 
 }
 
-// Every card must have these methods
+// Toda carta debe tener este método
 type Card interface {
 	GetCardType() CardType
 }
@@ -69,7 +69,7 @@ func ColorsMatch(c1, c2 Color) bool {
 	return (c1 == c2 || c1 == Multi || c2 == Multi) && !(c1 == NotColor || c2 == NotColor)
 }
 
-// We define the specific characteriistics of a Medicine in order to be considered a Card
+// Que parámetros tiene toda medicina
 type Medicine struct {
 	Color Color
 }
@@ -102,12 +102,14 @@ func (v Virus) GetCardType() CardType { return VirusCardType }
 func (v Virus) VirusFunc() {}
 func (v Virus) AddonFunc() {}
 
+// Si una carta tiene color, y tiene la función etiqueta AddonFunc, entonces aplica como ApplicableToOrgan
 type ApplicableToOrgan interface {
 	Card
 	GetColor() Color
 	AddonFunc()
 }
 
+// Un Joint es el conjunto formado por el órgano base y cualquier medicina o virus (ApplicableToOrgan) que pueda tener encima
 type Joint struct {
 	Base Organ
 	Added []ApplicableToOrgan
@@ -133,7 +135,7 @@ type Player struct {
 	Body []Joint
 }
 
-
+// El struct Game es el estado, alojando a los jugadores (manos y cuerpos), las pilas de cartas, y el turno actual
 type Game struct {
 	Players []Player
 	GrabPile []Card
@@ -149,9 +151,9 @@ func (g *Game) Discard(c Card) {
 func (g *Game) ApplyAddonToJoint(addon ApplicableToOrgan, joint *Joint) Result {
 	baseMatches := ColorsMatch(addon.GetColor(), joint.Base.Color)
 	pureOrgan := joint.DeriveJointState() == FreeJointState
-	addedMatches := !pureOrgan && ColorsMatch(addon.GetColor(), joint.Added[0].GetColor())
 
-	if !baseMatches && !addedMatches {
+	if !baseMatches && (pureOrgan || !(joint.Added[0].GetColor() == Multi)) {
+		// Si el addon no es multicolor entonces es del mismo color de la base, y si la base no es compatible entonces ninguna de las cartas es compatible
 		return Result{Illegal, fmt.Sprintf("ERR: Addon color %v has been tried to apply to joint color %v", addon.GetColor(), joint.Base.Color)}
 	}
 
@@ -159,14 +161,17 @@ func (g *Game) ApplyAddonToJoint(addon ApplicableToOrgan, joint *Joint) Result {
 		return Result{Illegal, "ERR: Tried to apply addon to immunised joint"}
 	}
 
-	// baseMatches OR addedMatches
+	// baseMatches O added es multicolor
 
 	if pureOrgan {
-		joint.Added = []ApplicableToOrgan{addon} // Organ is forced to match color with addon by logic, so there's no extra check
+		joint.Added = []ApplicableToOrgan{addon} // El órgano sí o sí tiene un color compatible con el addon
 	} else {
 		if addon.GetCardType() == MedicineCardType {
 			if joint.DeriveJointState() == InfectedJointState {
+				g.Discard(joint.Added[0])
+				g.Discard(addon)
 				joint.Added = []ApplicableToOrgan{}
+
 			} else { //VaccinatedJointState
 				if baseMatches {
 					joint.Added = append(joint.Added, addon)
@@ -176,10 +181,12 @@ func (g *Game) ApplyAddonToJoint(addon ApplicableToOrgan, joint *Joint) Result {
 			}
 		} else { // VirusCardType
 			if joint.DeriveJointState() == VaccinatedJointState {
+				g.Discard(joint.Added[0])
+				g.Discard(addon)
 				joint.Added = []ApplicableToOrgan{}
 			} else { //InfectedJointState
 				if baseMatches {
-					// remove joint
+					// hay que quitar el joint del cuerpo del jugador
 					return Result{OrganToDestroy, fmt.Sprintf("Destroy organ %v", joint)}
 				} else {
 					return Result{Illegal, "ERR: Cannot infect incompatible organ"}
@@ -193,13 +200,13 @@ func (g *Game) ApplyAddonToJoint(addon ApplicableToOrgan, joint *Joint) Result {
 func BuildStartingDeck() []Card {
     deck := []Card{}
 
-    // Unique cards
+    // Cartas únicas
     deck = append(deck, Organ{Multi}, Virus{Multi}, Treatment{LatexGlove}, Treatment{MedicalError})
-    // Two Cards
+    // Dos cartas
     for range 2 {
         deck = append(deck, Treatment{Contagion})
     }
-    // Three Cards
+    // Tres cartas
     for range 3 {
         deck = append(deck, Treatment{OrganThief}, Treatment{Transplant})
     }
@@ -228,10 +235,9 @@ func Shuffle(cards *[]Card) {
 }
 
 /*
- * DrawCard gives a card from the grabPile to a player, also manages the flipping when ran out of
- * grab pile.
+ * DrawCard le da una carta de g.GrabPile al jugador, si nos quedamos sin GrabPile le da vuelta a DiscardPile y la vuelve la nueva GrabPile
  *
- * We first check the grab pile, if it's empty we flip the discard pile and put it again.
+ * Nos aseguramos primero de que GrabPile no esté vacío
  *
  */
 func (g *Game) DrawCard(player *Player) Result {
@@ -243,7 +249,7 @@ func (g *Game) DrawCard(player *Player) Result {
             g.GrabPile = append(g.GrabPile, v)
         }
         g.DiscardPile = []Card{}
-        // GrabPile is not shuffled, the rules indicate a direct flip, without shuffling when the players run out of the GrabPile
+        // GrabPile no se mezcla, una interpretación mas literal del manual, en el que no menciona ningún barajeo
     }
     card := g.GrabPile[len(g.GrabPile)-1]
     g.GrabPile = g.GrabPile[:len(g.GrabPile)-1]
@@ -281,19 +287,17 @@ func(g *Game) DealInitialHands(numberOfPlayers int) Result {
  * HasWon checks if a player has won based on his number of joints and their states.
  * Assuming no colors are repeated, having 4 or more healthy joints would indicate a victory.
  *
- * We check the lenght of the body, and then, for each joint, we go to the next one if it's healthy
- * If we reach the last one and it's healthy, before proceeding we escape with a return true.
- * Were we ever find an unhealthy joint before the last one, we escape the loop and exit with false.
+ * We check the lenght of the body, and then, for each joint, we count the healthy ones, if healthy_joints >= 4 then true, else false.
  */
 func HasWon(player Player) bool {
 	if len(player.Body) >= 4 {
-		i := 0
-		for ((player.Body[i]).DeriveJointState() != InfectedJointState) {
-			if i > len(player.Body)-1 {
-				return true
+		var healthyJoints int
+		for _, joint := range player.Body {
+			if joint.DeriveJointState() != InfectedJointState {
+				healthyJoints++
 			}
-			i++ // kinda weird not capping increment, but it will either reach the last one before adding, so all the joints are healthy and therfore the player has won, or it will find an infected joint before finishing, never letting it increment past the player body's lenght
 		}
+		if healthyJoints >= 4 { return true }
 	}
 	return false
 }
@@ -339,8 +343,7 @@ func PlayOrgan(g *Game, action Action) Result {
 
  }
 
- func deleteIndexFromSlice[T any](s *[]T, o int) {
-	index := o
+func deleteIndexFromSlice[T any](s *[]T, index int) {
 	for i := index; i < len(*s)-1; i++ {
 		(*s)[i] = (*s)[i+1]
 	}
@@ -348,7 +351,7 @@ func PlayOrgan(g *Game, action Action) Result {
  }
 
 func playAddon(g *Game, action Action) Result {
-	emisor := g.Players[action.EmisorIdx]
+	emisor := &g.Players[action.EmisorIdx]
 
 	if len(action.ActuatingCardIdx) != 1 {
 		return Result{Error, "Can only play 1 addon at a time."}
@@ -365,7 +368,7 @@ func playAddon(g *Game, action Action) Result {
 		return Result{Error, "Cannot have more or less than 1 target player."}
 	}
 
-	target := g.Players[action.TargetPlayerIdx[0]]
+	target := &g.Players[action.TargetPlayerIdx[0]]
 
 	if len(action.TargetJointIdx) != 1 {
 		return Result{Error, "Cannot have more or less than 1 target joint."}
@@ -387,7 +390,7 @@ func playAddon(g *Game, action Action) Result {
 }
 
 func discardAndDraw(g *Game, action Action) Result {
-	emisor := g.Players[action.EmisorIdx]
+	emisor := &g.Players[action.EmisorIdx]
 	cardIdxsToDiscard := action.ActuatingCardIdx
 
 	if len(cardIdxsToDiscard) > 3 || len(cardIdxsToDiscard) < 1 {
@@ -403,7 +406,7 @@ func discardAndDraw(g *Game, action Action) Result {
 	results := []Result{}
 
 	for range len(cardIdxsToDiscard) {
-		results = append(results, g.DrawCard(&emisor))
+		results = append(results, g.DrawCard(emisor))
 	}
 
 	for _, result := range results {
