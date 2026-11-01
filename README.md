@@ -4,7 +4,7 @@ Implementación en Go del juego de cartas **Virus!**: un juego de 2 a 6 jugadore
 
 El proyecto está pensado como un **núcleo de reglas** independiente de la interfaz, para poder conectarle después una CLI, una GUI y un motor (IA) que juegue contra personas.
 
-> **Estado:** el núcleo de reglas está escrito pero todavía no hay forma de jugar: la entrada del usuario (`GetPlayerNum`, `GetActionFromInput`) aún no está implementada. Ver [Roadmap](#roadmap).
+> **Estado:** el núcleo compila, `go vet` sale limpio y se sondeó ejecutándolo (mazo, reparto, `PlayOrgan`, estados de órgano, `HasWon`, `playAddon`, `discardAndDraw`). Quedan bugs conocidos, ver [Problemas conocidos](#problemas-conocidos). Todavía no hay forma de jugar: la entrada del usuario (`GetPlayerNum`, `GetActionFromInput`) no está implementada. Ver [Roadmap](#roadmap).
 
 ---
 
@@ -115,10 +115,24 @@ Detalles que conviene tener presentes:
 
 ---
 
+## Problemas conocidos
+
+Encontrados ejecutando el código. Se borra cada punto al corregirlo.
+
+- **`playAddon` muta una copia del órgano.** `targetJoint := target.Body[i]` copia el `Joint`: al vacunar, el `Added` real no cambia y la carta desaparece; al curar, el virus queda en el órgano y también en el descarte (carta duplicada). Hay que trabajar con `&target.Body[i]`.
+- **`ApplyAddonToJoint` deja pasar colores incompatibles con cartas multicolor.** La excepción "`Added[0]` es multicolor" permite que un virus azul retire una medicina multicolor de un órgano rojo, o que una medicina azul cure un virus multicolor en un órgano rojo. El color de un addon solo se compara con el órgano base.
+- **`discardAndDraw` descarta la carta equivocada.** Usa `emisor.Hand[i]` (índice del bucle) en vez de `cardIdxsToDiscard[i]`, y borrar en orden ascendente desplaza los índices siguientes.
+- **`PlayPhase` trata como error todo lo que no sea `Success`**, incluido `OrganToDestroy` (una jugada legal) y las jugadas ilegales (`panic`).
+- **Índices sin validar:** `Hand[i]`, `Body[j]` y `Players[k]` fuera de rango provocan `panic`.
+- **`PlayOrgan` acepta un jugador objetivo distinto del emisor.** Revisar contra el reglamento.
+
+---
+
 ## Roadmap
 
 **Base del núcleo**
-- [ ] Ejecutar el código y cubrirlo con tests (la lógica fue escrita sin ejecutarse)
+- [ ] Corregir los [problemas conocidos](#problemas-conocidos)
+- [ ] Pasar los sondeos manuales a tests permanentes (`main_test.go`)
 - [ ] Invariante de conservación: el total de cartas siempre es 68
 - [ ] Tests de tabla para los estados de un órgano (virus y medicina, colores incluyendo multicolor)
 - [ ] Validar índices al inicio de cada acción, antes de mutar
@@ -126,6 +140,7 @@ Detalles que conviene tener presentes:
 
 **Tratamientos**
 - [ ] Transplant, Organ Thief, Contagion, Latex Glove, Medical Error
+- [ ] Decidir cuándo se rellena la mano de los jugadores que no tienen el turno (hoy `PlayPhase` solo rellena la del jugador actual; Latex Glove vacía las demás)
 
 **Interfaz**
 - [ ] `GetPlayerNum` y `GetActionFromInput`
